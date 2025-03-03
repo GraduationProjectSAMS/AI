@@ -1,98 +1,82 @@
+import torch
+import torch.nn as nn
+import torch.optim as optim
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+from sentence_transformers import SentenceTransformer
+from sklearn.preprocessing import LabelEncoder
+from fastapi import FastAPI
+from pydantic import BaseModel
+import random
 
-from scipy.spatial.distance import cosine
-
-# Load inventory data
+# Load product data
 inventory = pd.read_excel("Data/Pieces.xlsx")
 purchases = pd.read_excel("Data/Purchases.xlsx")
 
-# Attribute weights
-weights = {
-    "Room Type": 0.4,
-    "Aesthetic": 0.3,
-    "Category": 0.05,
-    "Price": 0.15,
-    "Color": 0.1
-}
+# Encode categorical features
+label_encoders = {}
+for col in ["Room Type", "Aesthetic", "Category", "Color"]:
+    le = LabelEncoder()
+    inventory[col] = le.fit_transform(inventory[col])
+    label_encoders[col] = le
 
-def vectorize_item(row):
-    room_types = {"Living Room": 1, "Kitchen": 2, "Bedroom": 3}
-    aesthetics = {"Modern": 1, "Classic": 2, "Contemporary": 3}
-    categories = {"Seats": 1, "Tables": 2, "Beds": 3}
-    colors = {"Gray": 1, "White": 2, "Brown": 3, "Black": 4}
+# Generate embeddings using Hugging Face
+model = SentenceTransformer("all-MiniLM-L6-v2")
+inventory["embedding"] = inventory["Description"].apply(lambda x: model.encode(x))
+
+# Define recommendation model
+class RecommendationNN(nn.Module):
+    def __init__(self, input_size):
+        super(RecommendationNN, self).__init__()
+        self.fc1 = nn.Linear(input_size, 128)
+        self.fc2 = nn.Linear(128, 64)
+        self.fc3 = nn.Linear(64, 1)
+        self.relu = nn.ReLU()
     
-    max_room_type = max(room_types.values())
-    max_aesthetic = max(aesthetics.values())
-    max_category = max(categories.values())
-    max_color = max(colors.values())
+    def forward(self, x):
+        x = self.relu(self.fc1(x))
+        x = self.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+
+# Convert data into training format
+X_train = np.array(list(inventory["embedding"]))
+y_train = np.random.rand(len(X_train))  # Placeholder, should be based on user interactions
+
+# Train model
+model_nn = RecommendationNN(X_train.shape[1])
+criterion = nn.MSELoss()
+optimizer = optim.Adam(model_nn.parameters(), lr=0.001)
+
+def train_model():
+    for _ in range(10):  # 10 epochs for now
+        optimizer.zero_grad()
+        outputs = model_nn(torch.tensor(X_train, dtype=torch.float32))
+        loss = criterion(outputs.squeeze(), torch.tensor(y_train, dtype=torch.float32))
+        loss.backward()
+        optimizer.step()
+    print("Training Complete")
+
+train_model()
+
+# FastAPI deployment
+app = FastAPI()
+class UserRequest(BaseModel):
+    user_id: int
+
+def recommend_products(user_id):
+    user_purchases = purchases[purchases["User ID"] == user_id]["ID"]
+    recommendations = []
+    for _, item in inventory.iterrows():
+        item_vector = np.array(item["embedding"])
+        score = model_nn(torch.tensor(item_vector, dtype=torch.float32)).item()
+        recommendations.append((item["ID"], score))
     
-    return np.array([
-        room_types.get(row["Room Type"], 0) / max_room_type,
-        aesthetics.get(row["Aesthetic"], 0) / max_aesthetic,
-        categories.get(row["Category"], 0) / max_category,
-        float(row["Price"]),  # Already normalized
-        colors.get(row["Color"], 0) / max_color
-    ])
+    recommendations = sorted(recommendations, key=lambda x: x[1], reverse=True)
+    return recommendations[:10]
 
-# Reevaluate Weighting to ensure weights properly affect the similarity:
-# Convert weights to fractions to sum to 1
-total_weight = sum(weights.values())
-weights = {k: v / total_weight for k, v in weights.items()}
+@app.post("/recommend/")
+def get_recommendations(request: UserRequest):
+    return {"recommendations": recommend_products(request.user_id)}
 
-
-def compute_similarity(vector1, vector2, weights):
-    weight_array = np.array([weights["Room Type"], weights["Aesthetic"], weights["Category"], weights["Price"], weights["Color"]])
-    vector1 = np.array(vector1, dtype=float)
-    vector2 = np.array(vector2, dtype=float)
-    
-    # Compute weighted Euclidean distance
-    distance = np.sqrt(np.sum(weight_array * (vector1 - vector2) ** 2))
-    return 1 / (1 + distance)  # Convert distance to similarity
-
-
-# Get user purchases
-user_purchases = purchases[purchases["User ID"] == 1]["ID"]
-
-def normalize(series):
-    return (series - series.min()) / (series.max() - series.min())
-
-# Normalize numerical data
-inventory["Price"] = normalize(inventory["Price"])
-purchases["Price"] = normalize(purchases["Price"])
-
-# Recommendations
-recommendations = []
-for _, inventory_item in inventory.iterrows():
-    inventory_vector = vectorize_item(inventory_item)
-    for purchased_item in user_purchases:
-        purchased_vector = vectorize_item(inventory[inventory["ID"] == purchased_item].iloc[0])
-        score = compute_similarity(inventory_vector, purchased_vector, weights)
-        recommendations.append((inventory_item["ID"], score))
-
-# Sort recommendations
-unique_recommendations = {}
-for product_id, score in recommendations:
-    if product_id not in unique_recommendations or unique_recommendations[product_id] < score:
-        unique_recommendations[product_id] = score
-
-ranked_products = sorted(unique_recommendations.items(), key=lambda x: x[1], reverse=True)
-
-# Display results
-top_n_recommendations = ranked_products[:10]
-print("Top Recommendations:", top_n_recommendations)
-
-product_ids = [item[0] for item in ranked_products]
-scores = [item[1] for item in ranked_products]
-
-# Visualization
-product_ids = [item[0] for item in ranked_products]
-scores = [item[1] for item in ranked_products]
-
-plt.figure(figsize=(10, 6))
-plt.bar(product_ids[:10], scores[:10], color='skyblue')
-plt.xlabel('Product ID')
-plt.ylabel('Similarity Score')
-plt.title('Top 10 Product Recommendations')
-plt.show()
+# Run with: uvicorn script_name:app --reload
