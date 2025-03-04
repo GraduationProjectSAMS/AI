@@ -3,19 +3,58 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial.distance import cosine
 
-# Load inventory data
-inventory = pd.read_excel("Data/Pieces.xlsx")
+# Define constants for file paths and sheet names
+PIECES_FILE_PATH = "Data/Pieces.xlsx"
+PURCHASES_FILE_PATH = "Data/Purchases.xlsx"
+
+PIECES_SHEET = "Pieces"
+ROOMS_SHEET = "Rooms"
+CATEGORIES_SHEET = "Categories"
+AESTHETICS_SHEET = "Aesthetics"
+ORDER_ITEMS_SHEET = "Order Items"
+ORDERS_TABLE_SHEET = "Orders Table"
+
+# Define constants for attribute names
+ROOM_TYPE = "Room Type"
+AESTHETIC = "Aesthetic"
+CATEGORY = "Category"  # Updated to match the column name in the Pieces sheet
+PRICE = "Price"
+COLOR = "Color"
+
+# Load inventory data and additional sheets
+try:
+    inventory = pd.read_excel(PIECES_FILE_PATH, sheet_name=PIECES_SHEET)
+    rooms = pd.read_excel(PIECES_FILE_PATH, sheet_name=ROOMS_SHEET)
+    categories = pd.read_excel(PIECES_FILE_PATH, sheet_name=CATEGORIES_SHEET)
+    aesthetics = pd.read_excel(PIECES_FILE_PATH, sheet_name=AESTHETICS_SHEET)
+except ValueError as e:
+    print(f"Error loading sheets: {e}")
+    print("Please ensure the following sheets exist in 'Pieces.xlsx':")
+    print(f"- {ROOMS_SHEET}")
+    print(f"- {CATEGORIES_SHEET}")
+    print(f"- {AESTHETICS_SHEET}")
+    exit(1)
+
+# Extract unique values from sheets
+room_types = rooms[ROOM_TYPE].dropna().unique()
+categories_list = categories["Categories"].dropna().unique()  # Use "Categories" for the Categories sheet
+aesthetics_list = aesthetics[AESTHETIC].dropna().unique()
+
+# Create dictionaries for encoding
+room_types_dict = {room: idx + 1 for idx, room in enumerate(room_types)}
+categories_dict = {category: idx + 1 for idx, category in enumerate(categories_list)}
+aesthetics_dict = {aesthetic: idx + 1 for idx, aesthetic in enumerate(aesthetics_list)}
 
 # Load purchases data (use the Order Items sheet)
-purchases = pd.read_excel("Data/Purchases.xlsx", sheet_name="Order Items")
+purchases = pd.read_excel(PURCHASES_FILE_PATH, sheet_name=ORDER_ITEMS_SHEET)
 
 # Attribute weights
 weights = {
-    "Room Type": 0.4,
-    "Aesthetic": 0.3,
-    "Category": 0.05,
-    "Price": 0.15,
-    "Color": 0.1
+    ROOM_TYPE: 0.4,
+    AESTHETIC: 0.3,
+    CATEGORY: 0.05,
+    PRICE: 0.15,
+    COLOR: 0.1
 }
 
 # Normalize numerical data (Price)
@@ -23,32 +62,26 @@ def normalize(series):
     return (series - series.min()) / (series.max() - series.min())
 
 # Normalize prices in inventory and purchases
-inventory["Price"] = normalize(inventory["Price"])
+inventory[PRICE] = normalize(inventory[PRICE])
 purchases["Unit Price"] = normalize(purchases["Unit Price"])
 
 # Vectorize an item based on its attributes
 def vectorize_item(row):
-    room_types = {"Living": 1, "Kitchen": 2, "Bedroom": 3, "Office": 4}
-    aesthetics = {"Modern": 1, "Classic": 2, "Cozy": 3, "Vintage": 4, "Stylish": 5, "Rustic": 6, "Industrial": 7, "Minimalist": 8, "Functional": 9}
-    categories = {"Seats": 1, "Tables": 2, "Beds": 3, "Storage": 4, "Entertainment": 5}
-    colors = {"Gray": 1, "Brown": 2, "Blue": 3, "Mahogany": 4, "White": 5, "Black": 6, "Clear": 7, "Beige": 8, "Walnut": 9, "Cherry": 10, "Teal": 11, "Natural": 12}
-    
-    max_room_type = max(room_types.values())
-    max_aesthetic = max(aesthetics.values())
-    max_category = max(categories.values())
-    max_color = max(colors.values())
+    max_room_type = max(room_types_dict.values())
+    max_aesthetic = max(aesthetics_dict.values())
+    max_category = max(categories_dict.values())
     
     return np.array([
-        room_types.get(row["Room Type"], 0) / max_room_type,
-        aesthetics.get(row["Aesthetic"], 0) / max_aesthetic,
-        categories.get(row["Category"], 0) / max_category,
-        float(row["Price"]),  # Already normalized
-        colors.get(row["Color"], 0) / max_color
+        room_types_dict.get(row[ROOM_TYPE], 0) / max_room_type,
+        aesthetics_dict.get(row[AESTHETIC], 0) / max_aesthetic,
+        categories_dict.get(row[CATEGORY], 0) / max_category,
+        float(row[PRICE]),  # Already normalized
+        1  # Placeholder for color (you can add color logic if needed)
     ])
 
 # Compute similarity between two vectors
 def compute_similarity(vector1, vector2, weights):
-    weight_array = np.array([weights["Room Type"], weights["Aesthetic"], weights["Category"], weights["Price"], weights["Color"]])
+    weight_array = np.array([weights[ROOM_TYPE], weights[AESTHETIC], weights[CATEGORY], weights[PRICE], weights[COLOR]])
     vector1 = np.array(vector1, dtype=float)
     vector2 = np.array(vector2, dtype=float)
     
@@ -57,7 +90,7 @@ def compute_similarity(vector1, vector2, weights):
     return 1 / (1 + distance)  # Convert distance to similarity
 
 # Get user purchases (assuming User ID = 1)
-user_orders = pd.read_excel("Data/Purchases.xlsx", sheet_name="Orders Table")
+user_orders = pd.read_excel(PURCHASES_FILE_PATH, sheet_name=ORDERS_TABLE_SHEET)
 user_order_ids = user_orders[user_orders["User ID"] == 1]["Order ID"]
 user_purchases = purchases[purchases["Order ID"].isin(user_order_ids)]
 
