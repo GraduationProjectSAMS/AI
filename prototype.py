@@ -2,6 +2,8 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial.distance import cosine
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
 
 # Define constants for file paths and sheet names
 PIECES_FILE_PATH = "Data/Pieces.xlsx"
@@ -37,7 +39,7 @@ except ValueError as e:
 
 # Extract unique values from sheets
 room_types = rooms[ROOM_TYPE].dropna().unique()
-categories_list = categories["Categories"].dropna().unique()  # Use "Categories" for the Categories sheet
+categories_list = categories["Categories"].dropna().unique()
 aesthetics_list = aesthetics[AESTHETIC].dropna().unique()
 
 # Create dictionaries for encoding
@@ -75,7 +77,7 @@ def vectorize_item(row):
         room_types_dict.get(row[ROOM_TYPE], 0) / max_room_type,
         aesthetics_dict.get(row[AESTHETIC], 0) / max_aesthetic,
         categories_dict.get(row[CATEGORY], 0) / max_category,
-        float(row[PRICE]),  # Already normalized
+        float(row[PRICE]),
         1  # Placeholder for color (you can add color logic if needed)
     ])
 
@@ -151,3 +153,59 @@ if ranked_products:  # Check if there are recommendations
     plt.show()
 else:
     print("No recommendations found.")
+
+# Future Task 1: Enhance filtering logic to refine recommendations based on purchase patterns
+def refine_recommendations_based_on_purchase_patterns(user_purchases, inventory):
+    # Cluster users based on purchase patterns
+    user_purchase_matrix = user_purchases.pivot_table(index='User ID', columns='Product ID', values='Quantity', fill_value=0)
+    scaler = StandardScaler()
+    user_purchase_matrix_scaled = scaler.fit_transform(user_purchase_matrix)
+    kmeans = KMeans(n_clusters=3, random_state=42)
+    user_purchase_matrix['Cluster'] = kmeans.fit_predict(user_purchase_matrix_scaled)
+    
+    # Refine recommendations based on cluster
+    user_cluster = user_purchase_matrix.loc[1, 'Cluster']
+    similar_users = user_purchase_matrix[user_purchase_matrix['Cluster'] == user_cluster].index
+    similar_users_purchases = user_purchases[user_purchases['User ID'].isin(similar_users)]
+    popular_products = similar_users_purchases['Product ID'].value_counts().index.tolist()
+    
+    # Filter recommendations based on popular products in the same cluster
+    refined_recommendations = [product for product in ranked_products if product[0] in popular_products]
+    return refined_recommendations
+
+refined_recommendations = refine_recommendations_based_on_purchase_patterns(user_purchases, inventory)
+print("Refined Recommendations based on Purchase Patterns:", refined_recommendations)
+
+# Future Task 2: Train an ML model to predict long-term preferences beyond the last purchase
+def train_ml_model_for_long_term_preferences(user_purchases, inventory):
+    # Prepare data for ML model
+    X = inventory[['Room Type', 'Aesthetic', 'Category', 'Price', 'Color']]
+    y = inventory['ID']
+    
+    # Encode categorical variables
+    X = pd.get_dummies(X, columns=['Room Type', 'Aesthetic', 'Category', 'Color'])
+    
+    # Train a simple ML model (e.g., Logistic Regression)
+    from sklearn.linear_model import LogisticRegression
+    model = LogisticRegression()
+    model.fit(X, y)
+    
+    # Predict long-term preferences
+    long_term_preferences = model.predict_proba(X)
+    return long_term_preferences
+
+long_term_preferences = train_ml_model_for_long_term_preferences(user_purchases, inventory)
+print("Long-term Preferences:", long_term_preferences)
+
+# Future Task 3: Introduce color and style matching refinements in future iterations
+def refine_recommendations_based_on_color_and_style(inventory, recommendations):
+    # Refine recommendations based on color and style
+    color_style_refined_recommendations = []
+    for product_id, score in recommendations:
+        product_details = inventory[inventory['ID'] == product_id].iloc[0]
+        if product_details['Color'] == 'Blue' and product_details['Aesthetic'] == 'Cozy':
+            color_style_refined_recommendations.append((product_id, score))
+    return color_style_refined_recommendations
+
+color_style_refined_recommendations = refine_recommendations_based_on_color_and_style(inventory, ranked_products)
+print("Color and Style Refined Recommendations:", color_style_refined_recommendations)
