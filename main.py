@@ -1,82 +1,147 @@
-import torch
-import torch.nn as nn
-import torch.optim as optim
 import pandas as pd
 import numpy as np
-from sentence_transformers import SentenceTransformer
-from sklearn.preprocessing import LabelEncoder
-from fastapi import FastAPI
-from pydantic import BaseModel
-import random
+import matplotlib.pyplot as plt
 
-# Load product data
-inventory = pd.read_excel("Data/Pieces.xlsx")
-purchases = pd.read_excel("Data/Purchases.xlsx")
+# Define constants
+PIECES_FILE_PATH = "Data/Pieces.xlsx"
+PURCHASES_FILE_PATH = "Data/Purchases.xlsx"
 
-# Encode categorical features
-label_encoders = {}
-for col in ["Room Type", "Aesthetic", "Category", "Color"]:
-    le = LabelEncoder()
-    inventory[col] = le.fit_transform(inventory[col])
-    label_encoders[col] = le
+PIECES_SHEET = "Pieces"
+ORDERS_TABLE_SHEET = "Orders Table"
+ORDER_ITEMS_SHEET = "Order Items"
 
-# Generate embeddings using Hugging Face
-model = SentenceTransformer("all-MiniLM-L6-v2")
-inventory["embedding"] = inventory["Description"].apply(lambda x: model.encode(x))
+# Define attribute weights
+weights = {
+    "Room Type": 0.35,
+    "Aesthetic": 0.25,
+    "Category": 0.05,
+    "Price": 0.15,
+    "Color": 0.2  # Increased weight for color similarity
+}
 
-# Define recommendation model
-class RecommendationNN(nn.Module):
-    def __init__(self, input_size):
-        super(RecommendationNN, self).__init__()
-        self.fc1 = nn.Linear(input_size, 128)
-        self.fc2 = nn.Linear(128, 64)
-        self.fc3 = nn.Linear(64, 1)
-        self.relu = nn.ReLU()
+# Define a color compatibility dictionary
+color_matching = {
+    "Black": ["Gray", "White", "Silver"],
+    "White": ["Beige", "Gray", "Black"],
+    "Gray": ["Black", "White", "Silver"],
+    "Brown": ["Beige", "Cream", "Tan"],
+    "Blue": ["Light Blue", "Gray", "White"],
+    "Green": ["Beige", "Brown", "White"],
+    "Red": ["Beige", "Black", "Gold"],
+    "Yellow": ["White", "Gray", "Gold"],
+    "Pink": ["White", "Beige", "Light Gray"]
+}
+
+# Load inventory data
+inventory = pd.read_excel(PIECES_FILE_PATH, sheet_name=PIECES_SHEET)
+
+# Load purchases and orders data
+orders = pd.read_excel(PURCHASES_FILE_PATH, sheet_name=ORDERS_TABLE_SHEET)
+purchases = pd.read_excel(PURCHASES_FILE_PATH, sheet_name=ORDER_ITEMS_SHEET)
+
+# Normalize numerical data (Price)
+def normalize(series):
+    return (series - series.min()) / (series.max() - series.min())
+
+inventory["Price"] = normalize(inventory["Price"])
+purchases["Unit Price"] = normalize(purchases["Unit Price"])
+
+# Create encoding dictionaries
+room_types = inventory["Room Type"].dropna().unique()
+categories_list = inventory["Category"].dropna().unique()
+aesthetics_list = inventory["Aesthetic"].dropna().unique()
+
+room_types_dict = {room: idx + 1 for idx, room in enumerate(room_types)}
+categories_dict = {category: idx + 1 for idx, category in enumerate(categories_list)}
+aesthetics_dict = {aesthetic: idx + 1 for idx, aesthetic in enumerate(aesthetics_list)}
+
+# Function to vectorize a furniture item
+def vectorize_item(row, last_color):
+    max_room = max(room_types_dict.values())
+    max_aesthetic = max(aesthetics_dict.values())
+    max_category = max(categories_dict.values())
+
+    # Check if the color is the same or complementary
+    color_similarity = 1 if row["Color"] == last_color else (0.8 if row["Color"] in color_matching.get(last_color, []) else 0.5)
+
+    return np.array([
+        room_types_dict.get(row["Room Type"], 0) / max_room,
+        aesthetics_dict.get(row["Aesthetic"], 0) / max_aesthetic,
+        categories_dict.get(row["Category"], 0) / max_category,
+        float(row["Price"]),
+        color_similarity
+    ])
+
+# Compute similarity score
+def compute_similarity(vector1, vector2, weights):
+    weight_array = np.array([weights["Room Type"], weights["Aesthetic"], weights["Category"], weights["Price"], weights["Color"]])
+    distance = np.sqrt(np.sum(weight_array * (vector1 - vector2) ** 2))
+    return 1 / (1 + distance)  # Convert distance to similarity
+
+# Get last purchase of the user (assuming User ID = 1)
+user_orders = orders[orders["User ID"] == 1]
+if user_orders.empty:
+    print("No purchases found for User ID = 1.")
+    exit()
+
+latest_order_id = user_orders.sort_values(by="Order Date", ascending=False).iloc[0]["Order ID"]
+last_purchases = purchases[purchases["Order ID"] == latest_order_id]
+
+if last_purchases.empty:
+    print("No items found for the last order.")
+    exit()
+
+print(f"Latest Order ID: {latest_order_id}")
+print("Last Purchased Items:")
+print(last_purchases)
+
+# Get all previously purchased product IDs
+previous_purchases = purchases[purchases["Order ID"].isin(user_orders["Order ID"])]["Product ID"].unique()
+
+# Compute recommendations based on the last purchase
+recommendations = []
+for _, purchased_item in last_purchases.iterrows():
+    product_id = purchased_item["Product ID"]
+    product_details = inventory[inventory["ID"] == product_id]
     
-    def forward(self, x):
-        x = self.relu(self.fc1(x))
-        x = self.relu(self.fc2(x))
-        x = self.fc3(x)
-        return x
+    if not product_details.empty:
+        purchased_vector = vectorize_item(product_details.iloc[0], product_details.iloc[0]["Color"])
+        last_price = purchased_item["Unit Price"]
 
-# Convert data into training format
-X_train = np.array(list(inventory["embedding"]))
-y_train = np.random.rand(len(X_train))  # Placeholder, should be based on user interactions
+        for _, inventory_item in inventory.iterrows():
+            if inventory_item["ID"] not in previous_purchases:  # Exclude previously bought items
+                
+                # Apply price filtering (±20% price range)
+                if abs(inventory_item["Price"] - last_price) > 0.2:
+                    continue  # Skip items outside budget range
+                
+                inventory_vector = vectorize_item(inventory_item, product_details.iloc[0]["Color"])
+                score = compute_similarity(inventory_vector, purchased_vector, weights)
+                recommendations.append((inventory_item["ID"], score))
 
-# Train model
-model_nn = RecommendationNN(X_train.shape[1])
-criterion = nn.MSELoss()
-optimizer = optim.Adam(model_nn.parameters(), lr=0.001)
+# Sort and remove duplicates
+unique_recommendations = {}
+for product_id, score in recommendations:
+    if product_id not in unique_recommendations or unique_recommendations[product_id] < score:
+        unique_recommendations[product_id] = score
 
-def train_model():
-    for _ in range(10):  # 10 epochs for now
-        optimizer.zero_grad()
-        outputs = model_nn(torch.tensor(X_train, dtype=torch.float32))
-        loss = criterion(outputs.squeeze(), torch.tensor(y_train, dtype=torch.float32))
-        loss.backward()
-        optimizer.step()
-    print("Training Complete")
+ranked_products = sorted(unique_recommendations.items(), key=lambda x: x[1], reverse=True)
 
-train_model()
+# Display top recommendations
+top_n_recommendations = ranked_products[:10]
+print("Top Recommendations:", top_n_recommendations)
 
-# FastAPI deployment
-app = FastAPI()
-class UserRequest(BaseModel):
-    user_id: int
+# Visualization
+if ranked_products:
+    product_ids = [item[0] for item in ranked_products]
+    scores = [item[1] for item in ranked_products]
 
-def recommend_products(user_id):
-    user_purchases = purchases[purchases["User ID"] == user_id]["ID"]
-    recommendations = []
-    for _, item in inventory.iterrows():
-        item_vector = np.array(item["embedding"])
-        score = model_nn(torch.tensor(item_vector, dtype=torch.float32)).item()
-        recommendations.append((item["ID"], score))
-    
-    recommendations = sorted(recommendations, key=lambda x: x[1], reverse=True)
-    return recommendations[:10]
-
-@app.post("/recommend/")
-def get_recommendations(request: UserRequest):
-    return {"recommendations": recommend_products(request.user_id)}
-
-# Run with: uvicorn script_name:app --reload
+    plt.figure(figsize=(10, 6))
+    plt.bar(range(len(product_ids[:10])), scores[:10], color='skyblue', tick_label=product_ids[:10])
+    plt.xlabel('Product ID')
+    plt.ylabel('Similarity Score')
+    plt.title('Top 10 Product Recommendations (With Color & Budget Filtering)')
+    plt.tight_layout()
+    plt.show()
+else:
+    print("No recommendations found.")
