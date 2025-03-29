@@ -4,14 +4,20 @@ from interaction_matrix import draw_interaction_matrix
 from usage_diagram import draw_usage_diagram
 from user_location_diagram import draw_user_location_diagram
 
-# Disable interactive mode to prevent blocking issues
-plt.ioff()
+# Create a figure with subplots (2 rows, 2 columns)
+fig, axes = plt.subplots(2, 2, figsize=(15, 12))
 
-# Call all functions sequentially
-draw_communication_diagram()
-draw_interaction_matrix()
-draw_usage_diagram()
-draw_user_location_diagram()
+# Call each function and pass the corresponding subplot axis
+draw_communication_diagram(axes[0, 0])  # Top-left
+draw_interaction_matrix(axes[0, 1])  # Top-right
+draw_usage_diagram(axes[1, 0])  # Bottom-left
+draw_user_location_diagram(axes[1, 1])  # Bottom-right
 
-# Show all figures at the end
+# Adjust layout to prevent overlap
+plt.tight_layout()
+
+# Save as a single file
+plt.savefig("all_diagrams.png", dpi=300)
+
+# Show the combined figure
 plt.show()
