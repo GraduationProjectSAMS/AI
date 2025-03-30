@@ -1,8 +1,8 @@
 import matplotlib.pyplot as plt
-from communication_diagram import draw_communication_diagram
-from interaction_matrix import draw_interaction_matrix
-from usage_diagram import draw_usage_diagram
-from user_location_diagram import draw_user_location_diagram
+from all_diagrams.communication_diagram import draw_communication_diagram
+from all_diagrams.interaction_matrix import draw_interaction_matrix
+from all_diagrams.usage_diagram import draw_usage_diagram
+from all_diagrams.user_location_diagram import draw_user_location_diagram
 
 # Create a figure with subplots (2 rows, 2 columns)
 fig, axes = plt.subplots(2, 2, figsize=(15, 12))
