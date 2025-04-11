@@ -22,7 +22,6 @@ AESTHETIC = "Aesthetic"
 CATEGORY = "Category"
 PRICE = "Price"
 COLOR = "Color"
-OLD_PRICE = "Old Price"
 
 # Define a color compatibility dictionary with prioritized rankings
 color_matching = {
@@ -63,14 +62,6 @@ def normalize(series):
 inventory[PRICE] = normalize(inventory[PRICE])
 order_items["Unit Price"] = normalize(order_items["Unit Price"])
 
-# Incorporate discounts for boosting recommendations
-def calculate_discount(row):
-    if pd.notna(row[OLD_PRICE]):
-        return (row[OLD_PRICE] - row[PRICE]) / row[OLD_PRICE]
-    return 0
-
-inventory["Discount"] = inventory.apply(calculate_discount, axis=1)
-
 # Create encoding dictionaries for categorical values
 room_types_dict = {room: idx for idx, room in enumerate(inventory[ROOM_TYPE].unique(), start=1)}
 aesthetics_dict = {aesthetic: idx for idx, aesthetic in enumerate(inventory[AESTHETIC].unique(), start=1)}
@@ -83,7 +74,6 @@ def vectorize_item(row):
         float(aesthetics_dict.get(row.get(AESTHETIC), 0)) / max(aesthetics_dict.values()),
         float(categories_dict.get(row.get(CATEGORY), 0)) / max(categories_dict.values()),
         float(row[PRICE]) if pd.notna(row[PRICE]) else 0,
-        float(row["Discount"] if pd.notna(row["Discount"]) else 0)
     ])
 
 # Enhanced Similarity Calculation with Distance Penalty
