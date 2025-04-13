@@ -1,0 +1,5 @@
+pandas
+numpy
+matplotlib
+scipy
+openpyxl  # Required to read Excel files (.xlsx)

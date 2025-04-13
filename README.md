@@ -48,6 +48,8 @@ GET http://localhost:5000/recommendations?user_id=12&top_n=10
 {
   "user_id": 12,
   "recommendations": [
+    {"id": 5, "score": 0.97},
+    {"id": 5, "score": 0.95},
     {"id": 5, "score": 0.92},
     {"id": 14, "score": 0.89},
     {"id": 3, "score": 0.87}
