@@ -1,7 +1,7 @@
 # Flask Wrapper
 
 from flask import Flask, request, jsonify
-from recommender import get_recommendations
+from engine import get_recommendations
 
 app = Flask(__name__)
 

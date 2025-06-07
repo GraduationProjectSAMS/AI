@@ -5,7 +5,7 @@ import os
 # Add the parent directory to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from recommender import get_recommendations
+from engine import get_recommendations
 
 start = time.time()
 

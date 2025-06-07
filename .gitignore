@@ -5,3 +5,4 @@ __pycache__
 .vscode
 Diagrams/__pycache__
 Diagrams/all_diagrams/__pycache__
+.env
