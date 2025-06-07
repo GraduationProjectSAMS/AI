@@ -3,7 +3,6 @@ numpy
 matplotlib
 scipy
 openpyxl  # Required to read Excel files (.xlsx)
-django
 python-decouple
 fastapi
 uvicorn
