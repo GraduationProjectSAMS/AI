@@ -67,13 +67,26 @@ room_types_dict = {room: idx for idx, room in enumerate(inventory[ROOM_TYPE].uni
 aesthetics_dict = {aesthetic: idx for idx, aesthetic in enumerate(inventory[AESTHETIC].unique(), start=1)}
 categories_dict = {category: idx for idx, category in enumerate(inventory[CATEGORY].unique(), start=1)}
 
+def color_score(purchased_color, inventory_color):
+    compatible = color_matching.get(purchased_color, [])
+    if inventory_color == purchased_color:
+        return 1.0
+    elif inventory_color in compatible[:3]:
+        return 0.9
+    elif inventory_color in compatible[:6]:
+        return 0.7
+    elif inventory_color in compatible:
+        return 0.5
+    else:
+        return 0.0
+
 # Vectorize item with encoded categorical values
-def vectorize_item(row):
+def weighted_vectorize(row):
     return np.array([
-        float(room_types_dict.get(row.get(ROOM_TYPE), 0)) / max(room_types_dict.values()),
-        float(aesthetics_dict.get(row.get(AESTHETIC), 0)) / max(aesthetics_dict.values()),
-        float(categories_dict.get(row.get(CATEGORY), 0)) / max(categories_dict.values()),
-        float(row[PRICE]) if pd.notna(row[PRICE]) else 0,
+        room_types_dict.get(row.get(ROOM_TYPE), 0) / max(room_types_dict.values()) * weights[ROOM_TYPE],
+        aesthetics_dict.get(row.get(AESTHETIC), 0) / max(aesthetics_dict.values()) * weights[AESTHETIC],
+        categories_dict.get(row.get(CATEGORY), 0) / max(categories_dict.values()) * weights[CATEGORY],
+        float(row[PRICE]) * weights[PRICE] if pd.notna(row[PRICE]) else 0,
     ])
 
 # Enhanced Similarity Calculation with Distance Penalty
@@ -95,68 +108,53 @@ def compute_similarity(vector1, vector2, purchased_color, inventory_color):
 # Process each user's last purchases
 for _, user in users.iterrows():
     user_id = user["User ID"]
-    purchase_history = eval(user["Purchase History"])  # Convert string to list
+    purchase_history = eval(user["Purchase History"])
+
     if not purchase_history:
-        print(f"No purchase history found for User ID {user_id}.")
+        print(f"No purchase history for User ID {user_id}")
         continue
 
-    # Get details of all last purchased items
-    purchased_items = inventory[inventory["ID"].isin(purchase_history)]
-    if purchased_items.empty:
-        print(f"No valid purchases found for User ID {user_id}.")
+    # --- Get Last Purchased Item Only ---
+    last_purchase_id = purchase_history[-1]
+    last_purchased_item = inventory[inventory["ID"] == last_purchase_id]
+
+    if last_purchased_item.empty:
+        print(f"Last purchased item not found for User ID {user_id}")
         continue
 
-    # Vectorize all purchased items and store their colors
-    purchased_vectors = []
-    purchased_colors = []
-    for _, purchased_item in purchased_items.iterrows():
-        purchased_vectors.append(vectorize_item(purchased_item))
-        purchased_colors.append(purchased_item[COLOR])
+    last_vector = weighted_vectorize(last_purchased_item.iloc[0])
+    last_color = last_purchased_item.iloc[0][COLOR]
 
-    # Generate recommendations by comparing against ALL purchased items
     recommendations = []
-    for _, inventory_item in inventory.iterrows():
-        if inventory_item["ID"] in purchase_history:
-            continue  # Skip already purchased items
+    for _, candidate in inventory.iterrows():
+        if candidate["ID"] in purchase_history:
+            continue
 
-        inventory_vector = vectorize_item(inventory_item)
-        max_score = 0  # Track the highest similarity score across all purchased items
+        candidate_vector = weighted_vectorize(candidate)
+        base_similarity = 1 - cosine(last_vector, candidate_vector)
+        base_similarity = max(0, base_similarity)  # Handle NaN
 
-        for purchased_vector, purchased_color in zip(purchased_vectors, purchased_colors):
-            score = compute_similarity(
-                inventory_vector, 
-                purchased_vector, 
-                purchased_color, 
-                inventory_item[COLOR]
-            )
-            if score > max_score:
-                max_score = score  # Keep the highest score
+        # Apply color influence
+        color_weight = color_score(last_color, candidate[COLOR])
+        final_score = base_similarity * 0.85 + color_weight * 0.15
 
-        recommendations.append((inventory_item["ID"], max_score))
+        recommendations.append((candidate["ID"], final_score))
 
-    # Rank and sort recommendations
-    unique_recommendations = {}
-    for product_id, score in recommendations:
-        if product_id not in unique_recommendations or unique_recommendations[product_id] < score:
-            unique_recommendations[product_id] = score
+    top_recommendations = sorted(recommendations, key=lambda x: x[1], reverse=True)[:10]
 
-    ranked_products = sorted(unique_recommendations.items(), key=lambda x: x[1], reverse=True)
-
-    # Display results for the user
-    top_n_recommendations = ranked_products[:10]
     print(f"\nTop Recommendations for User ID {user_id}:")
-    print(top_n_recommendations)
+    print(top_recommendations)
 
-    # Visualization
-    if ranked_products:
-        product_ids = [item[0] for item in ranked_products]
-        scores = [item[1] for item in ranked_products]
+    # Plot Results
+    if top_recommendations:
+        product_ids = [item[0] for item in top_recommendations]
+        scores = [item[1] for item in top_recommendations]
 
         plt.figure(figsize=(10, 6))
-        plt.bar(range(len(product_ids[:10])), scores[:10], color='skyblue', tick_label=product_ids[:10])
+        plt.bar(range(len(product_ids)), scores, tick_label=product_ids, color='skyblue')
+        plt.title(f'Top 10 Recommendations for User {user_id}')
         plt.xlabel('Product ID')
         plt.ylabel('Similarity Score')
-        plt.title(f'Top 10 Recommendations for User ID {user_id}')
         plt.tight_layout()
         plt.show()
     else:
