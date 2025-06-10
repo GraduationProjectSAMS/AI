@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from numpy.random import Generator, PCG64
 from sklearn.preprocessing import MinMaxScaler
 from scipy.spatial.distance import cosine
 
@@ -55,6 +56,9 @@ weights = {
     COLOR: 0.15
 }
 
+# Initialize a random generator (do this once at module level)
+rng = Generator(PCG64(seed=42))
+
 # Normalize numerical data (Price)
 scaler = MinMaxScaler()
 inventory[[PRICE]] = scaler.fit_transform(inventory[[PRICE]])
@@ -91,46 +95,64 @@ def weighted_vectorize(row):
 def compute_similarity(vector1, vector2, purchased_color, inventory_color):
     vector1 = np.array(vector1, dtype=float)
     vector2 = np.array(vector2, dtype=float)
-    similarity = 1 - cosine(vector1, vector2)
+    
+    # Base similarity (0-0.80 range)
+    similarity = (1 - cosine(vector1, vector2)) * 0.80
+    
+    # Color compatibility (0-0.08 range)
+    color_comp = color_score(purchased_color, inventory_color) * 0.08
+    
+    # Room type bonus (0-0.07 range)
+    room_bonus = 0.07 if vector1[0] == vector2[0] else 0
+    
+    # Use a tiny fraction of another attribute as tie-breaker
+    tie_breaker = vector2[2] * 0.0001  # e.g., use category index
+    total_similarity = similarity + color_comp + room_bonus + tie_breaker
+    return np.clip(total_similarity, 0, 1.0)  # Cleaner than min/max
 
-    # Color Bonus — Reduced to Avoid Overcompensation
-    if inventory_color in color_matching.get(purchased_color, []):
-        similarity = min(similarity + 0.05, 1.0)
-        
-    # Distance Penalty for More Precision in Similarity
-    distance_penalty = np.linalg.norm(vector1 - vector2) * 0.2
-    similarity = max(0, similarity - distance_penalty)
-
-    return similarity
 # Core function: get recommendations based on last purchase
 def get_recommendations(user_id, top_n=10):
+    # Get user information
     user_row = users[users["User ID"] == user_id]
     if user_row.empty:
         raise ValueError(f"User ID {user_id} not found.")
     
+    # Get complete purchase history
     purchase_history = eval(user_row.iloc[0]["Purchase History"])
     if not purchase_history:
         return []
 
-    last_purchase_id = purchase_history[-1]
-    last_item_row = inventory[inventory["ID"] == last_purchase_id]
-    if last_item_row.empty:
-        return []
-
-    last_vector = weighted_vectorize(last_item_row.iloc[0])
-    last_color = last_item_row.iloc[0]["Color"]
+    # Get all items from the last purchase
+    last_purchase_items = inventory[inventory["ID"].isin(purchase_history)]
+    
+    # Create vectors for all last purchased items
+    last_vectors = []
+    last_colors = []
+    last_rooms = []
+    for _, item in last_purchase_items.iterrows():
+        last_vectors.append(weighted_vectorize(item))
+        last_colors.append(item["Color"])
+        last_rooms.append(item[ROOM_TYPE])
 
     recommendations = []
     for _, candidate in inventory.iterrows():
         if candidate["ID"] in purchase_history:
             continue
+            
         candidate_vector = weighted_vectorize(candidate)
         candidate_color = candidate["Color"]
-        score = compute_similarity(last_vector, candidate_vector, last_color, candidate_color)
+        
+        max_score = 0
+        for last_vec, last_col in zip(last_vectors, last_colors):
+            similarity = compute_similarity(last_vec, candidate_vector, last_col, candidate_color)
+            if similarity > max_score:
+                max_score = similarity
+        
         recommendations.append({
             "id": candidate["ID"],
-            "compatibility_score": round(float(score), 4)
+            "compatibility_score": round(float(max_score), 4)
         })
-
+        
+    # Sort by score and return top N recommendations
     recommendations = sorted(recommendations, key=lambda x: x["compatibility_score"], reverse=True)
     return recommendations[:top_n]
