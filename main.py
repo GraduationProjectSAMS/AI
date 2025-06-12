@@ -1,18 +1,20 @@
 from fastapi import FastAPI, HTTPException
-from engine import get_recommendations_for_user
+from engine import get_recommendations_endpoint, RecommendationRequest, RecommendationResponse
+from typing import List, Optional
 
-#uvicorn recommender.api.main:app --reload
+# uvicorn recommender.api.main:app --reload
 app = FastAPI()
+
 
 @app.get("/")
 def root():
     return {"message": "Furnisique Recommendation API is running!"}
 
 
-@app.get("/recommend/{user_id}")
-def recommend(user_id: int):
+@app.post("/api/recommendations", response_model=List[RecommendationResponse])
+async def recommend(request: RecommendationRequest):
     try:
-        recommendations = get_recommendations_for_user(user_id)  # ✅ Matches the import
-        return {"user_id": user_id, "recommendations": recommendations}
+        response = await get_recommendations_endpoint(request)
+        return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
