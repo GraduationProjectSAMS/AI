@@ -1,19 +1,13 @@
-from collections import Counter
-from itertools import count
+from typing import List, Optional
 
-import pandas as pd
-import numpy as np
-from numpy.random import Generator, PCG64
-from sklearn.preprocessing import MinMaxScaler
-from scipy.spatial.distance import cosine
-from fastapi import FastAPI, HTTPException, Depends, Security
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel
-from typing import List, Dict, Optional
 import httpx
-import asyncio
-from datetime import datetime, timedelta
-import json
+import numpy as np
+import pandas as pd
+from fastapi import FastAPI, HTTPException
+from numpy.random import Generator, PCG64
+from pydantic import BaseModel
+from scipy.spatial.distance import cosine
+from sklearn.preprocessing import MinMaxScaler
 
 # FastAPI app initialization
 app = FastAPI(title="Recommendation Service")
