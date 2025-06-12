@@ -4,7 +4,6 @@ services:
       context: .
       dockerfile: Dockerfile
     image: ommrgazar315/ai-service:1.0
-    container_name: ai
     ports:
       - "8005:8000"
     environment:
