@@ -1,9 +1,10 @@
 services:
-  recommendation-service:
+  recommendation:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: recommendation-service
+    image: ommrgazar315/recommendation:1.0
+    container_name: recommendation
     ports:
       - "8000:8000"
     environment:
