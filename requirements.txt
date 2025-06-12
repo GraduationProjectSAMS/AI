@@ -1,8 +1,10 @@
-pandas
-numpy
-matplotlib
-scipy
+pandas~=2.1.3
+numpy~=1.26.4
+matplotlib~=3.10.3
+scipy~=1.11.4
 openpyxl  # Required to read Excel files (.xlsx)
-fastapi
-uvicorn[standard]
-scikit-learn
+fastapi~=0.109.1
+uvicorn[standard]~=0.24.0
+scikit-learn~=1.7.0
+httpx~=0.28.1
+pydantic~=2.5.0
