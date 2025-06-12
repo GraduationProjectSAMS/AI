@@ -18,12 +18,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy application code
+COPY . .
+
 # Install Python dependencies
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
-# Copy application code
-COPY . .
 
 # Create a non-root user to run the application
 RUN useradd -m -u 1000 appuser && \
