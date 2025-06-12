@@ -1,17 +1,17 @@
 services:
-  recommendation:
+  ai:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ommrgazar315/recommendation:1.0
-    container_name: recommendation
+    image: ommrgazar315/ai:1.0
+    container_name: ai
     ports:
-      - "8000:8000"
+      - "8005:8000"
     environment:
       - API_BASE_URL=https://furnisique.servehttp.com/api
       - LOG_LEVEL=info
     volumes:
-      - .:/app
+      - ai:/app
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/api/health')" ]
@@ -19,17 +19,3 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    networks:
-      - app-network
-
-networks:
-  app-network:
-    driver: bridge
-
-volumes:
-  recommendation-service-data:
-    driver: local
-    driver_opts:
-      type: none
-      device: /var/www/recommendation
-      o: bind
