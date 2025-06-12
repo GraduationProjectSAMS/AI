@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ommrgazar315/ai:1.0
+    image: ommrgazar315/ai-service:1.0
     container_name: ai
     ports:
       - "8005:8000"
@@ -11,7 +11,7 @@ services:
       - API_BASE_URL=https://furnisique.servehttp.com/api
       - LOG_LEVEL=info
     volumes:
-      - ai:/app
+      - .:/app
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/api/health')" ]
