@@ -26,22 +26,12 @@ RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
 
-# Create a non-root user to run the application
-RUN useradd -m -u 1000 appuser && \
-    chown -R appuser:appuser /app
-
-# Switch to non-root user
-USER appuser
-
-# Expose the port the app runs on
-EXPOSE 8000
-
 # Production server with Gunicorn managing Uvicorn workers
 # Workers = (2 * CPU cores) + 1
 CMD ["gunicorn", "main:app", \
      "-w", "4", \
      "-k", "uvicorn.workers.UvicornWorker", \
-     "--bind", "0.0.0.0:8000", \
+     "--bind", "0.0.0.0:80", \
      "--access-logfile", "-", \
      "--error-logfile", "-", \
      "--max-requests", "1000", \
