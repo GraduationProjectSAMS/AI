@@ -15,6 +15,11 @@ def root():
 async def recommend(request: RecommendationRequest):
     try:
         response = await get_recommendations_endpoint(request)
+        print("No purchased products found")
         return response
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print("No purchased products found")
+        raise HTTPException(
+            status_code=404,
+            detail="No purchased products found"
+        )
