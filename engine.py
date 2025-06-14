@@ -57,7 +57,6 @@ color_matching = {
 
 # Pydantic models for API responses
 class RecommendationRequest(BaseModel):
-    top_n: Optional[int] = 10
     token: str  # Bearer token passed in payload
 
 
@@ -232,7 +231,7 @@ def compute_similarity(vector1, vector2, purchased_color, inventory_color):
 
 
 # Core function: get recommendations based on last purchase
-def get_recommendations_for_user(purchase_history, top_n=10):
+def get_recommendations_for_user(purchase_history):
     """Modified version that doesn't need user_id"""
     if not purchase_history:
         return []
@@ -270,7 +269,7 @@ def get_recommendations_for_user(purchase_history, top_n=10):
 
     # Sort by score and return top N recommendations
     recommendations = sorted(recommendations, key=lambda x: x["compatibility_score"], reverse=True)
-    return recommendations[:top_n]
+    return recommendations
 
 
 # FastAPI Endpoints
@@ -299,7 +298,7 @@ async def get_recommendations_endpoint(request: RecommendationRequest):
             raise HTTPException(status_code=503, detail="Failed to fetch data from API")
 
         # Get recommendations based on the user's purchase history
-        recommendations = get_recommendations_for_user(purchased_product_ids, request.top_n)
+        recommendations = get_recommendations_for_user(purchased_product_ids)
 
         return [
             RecommendationResponse(
